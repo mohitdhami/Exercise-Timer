@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Exercise Timer</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Exercise Timer</h1>
+
+        <div class="main-layout">
+            <!-- Workout Builder -->
+            <div class="panel builder-panel">
+                <h2>Workout Builder</h2>
+                <div class="add-row">
+                    <input type="text" id="exerciseName" placeholder="Exercise name">
+                    <div class="duration-group">
+                        <span class="duration-label">Duration</span>
+                        <div class="duration-clock">
+                            <input type="number" id="exerciseDuration" placeholder="mm" min="0" max="60" value="1">
+                            <span class="duration-sep">:</span>
+                            <input type="number" id="exerciseDurationSec" placeholder="ss" min="0" max="59" value="0">
+                        </div>
+                    </div>
+                    <button id="addExerciseBtn" class="btn btn-add">+ Exercise</button>
+                </div>
+                <div class="exercise-box">
+                    <div class="exercise-box-header">
+                        <span class="exercise-box-title">Exercises</span>
+                        <span id="exerciseCount" class="exercise-box-count"></span>
+                    </div>
+                    <div id="workoutList" class="workout-list"></div>
+                </div>
+                <div class="break-row">
+                    <span class="break-row-label">☕ Add Break</span>
+                    <div class="duration-clock">
+                        <input type="number" id="breakDuration" placeholder="mm" min="0" max="60" value="0">
+                        <span class="duration-sep">:</span>
+                        <input type="number" id="breakDurationSec" placeholder="ss" min="0" max="59" value="30">
+                    </div>
+                    <button id="addBreakBtn" class="btn btn-break">+ Break</button>
+                </div>
+                <div class="builder-actions">
+                    <button id="loadSampleBtn" class="btn btn-secondary">Load Sample</button>
+                    <button id="clearAllBtn" class="btn btn-danger">Clear All</button>
+                </div>
+                <div class="presets-section">
+                    <div class="presets-actions">
+                        <button id="savePresetBtn" class="btn btn-save-preset">Save as Preset</button>
+                        <button id="importPresetsBtn" class="btn btn-import" title="Import presets from file">&#8613; Import</button>
+                        <input type="file" id="importFileInput" accept=".json" style="display:none">
+                    </div>
+                    <div class="presets-header">
+                        <h3><span class="presets-arrow">&#9654;</span> Saved Presets</h3>
+                    </div>
+                    <div id="presetsList" class="presets-list"></div>
+                </div>
+            </div>
+
+            <!-- Timer Panel -->
+            <div class="panel timer-panel" id="timerPanel">
+                <div class="timer-top-bar">
+                    <div class="sound-toggle">
+                        <label>
+                            <input type="checkbox" id="soundToggle" checked>
+                            Sound Alerts
+                        </label>
+                        <div class="volume-control">
+                            <span class="volume-label">Vol</span>
+                            <input type="range" id="volumeSlider" min="0" max="200" value="100" class="volume-slider">
+                            <span id="volumeValue" class="volume-value">100%</span>
+                        </div>
+                    </div>
+                    <button id="fullscreenBtn" class="btn btn-fullscreen" title="Fullscreen">⛶</button>
+                </div>
+                <div id="timerDisplay" class="timer-display">
+                    <div id="timerLabel" class="timer-label">Ready</div>
+                    <div id="timerTime" class="timer-time">00:00</div>
+                    <div id="timerProgress" class="timer-progress">
+                        <div id="timerProgressBar" class="timer-progress-bar"></div>
+                    </div>
+                    <div id="nextUp" class="next-up"></div>
+                </div>
+                <div class="timer-controls">
+                    <button id="startBtn" class="btn btn-start">Start</button>
+                    <button id="pauseBtn" class="btn btn-pause" disabled>Pause</button>
+                    <button id="resetBtn" class="btn btn-reset" disabled>Reset</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>

@@ -8,6 +8,8 @@
     let isRunning = false;
     let isPaused = false;
     let audioCtx = null;
+    let wakeLock = null; // Screen Wake Lock: held only while the timer runs
+    let keepAwakeVideo = null; // Fallback for browsers without Wake Lock API
     let presets = {}; // { presetName: workoutArray }
     const STORAGE_KEY = 'exerciseTimerPresets';
     const DURATIONS_KEY = 'exerciseTimerDurations';
@@ -76,6 +78,9 @@
     const timerPanel = document.getElementById('timerPanel');
     const volumeSlider = document.getElementById('volumeSlider');
     const volumeValue = document.getElementById('volumeValue');
+    const adjustBtns = Array.from(document.querySelectorAll('.btn-adjust'));
+    const prevBtn = document.getElementById('prevBtn');
+    const nextBtn = document.getElementById('nextBtn');
 
     // Audio context
     function getAudioCtx() {
@@ -485,6 +490,7 @@
             timerTime.textContent = '00:00';
             timerProgressBar.style.width = '0%';
             nextUp.textContent = 'Add exercises to begin';
+            updateAdjustControls();
             return;
         }
 
@@ -494,6 +500,7 @@
         timerLabel.className = 'timer-label';
         timerProgressBar.style.width = '0%';
         nextUp.textContent = `${workout.length} items in queue`;
+        updateAdjustControls();
     }
 
     function renderRunningState() {
@@ -508,7 +515,8 @@
         timerTime.textContent = formatTime(timeLeft);
 
         const elapsed = totalDuration - timeLeft;
-        const progress = totalDuration > 0 ? (elapsed / totalDuration) * 100 : 0;
+        const rawProgress = totalDuration > 0 ? (elapsed / totalDuration) * 100 : 0;
+        const progress = Math.min(100, Math.max(0, rawProgress));
         timerProgressBar.style.width = `${progress}%`;
         timerProgressBar.className = `timer-progress-bar ${isBreak ? 'break-bar' : ''}`;
 
@@ -520,6 +528,205 @@
             nextUp.textContent = 'Last item!';
         }
     }
+
+    // Manual time adjustment (+/-) and sub-activity shifting (prev/next).
+    // Only the current interval's remaining time is changed; workout[] stays
+    // intact so the rest of the regimen keeps its planned durations.
+    // +/- is capped at the current item's predefined duration and can never
+    // extend a sub-activity beyond it.
+    function getPredefinedLimit() {
+        if (currentIndex < 0 || currentIndex >= workout.length) return 0;
+        return workout[currentIndex].duration;
+    }
+
+    function hasActiveInterval() {
+        return (isRunning || isPaused) && workout.length > 0 && currentIndex < workout.length;
+    }
+
+    function updateAdjustControls() {
+        const active = hasActiveInterval();
+        const limit = active ? getPredefinedLimit() : 0;
+        const atMax = active && timeLeft >= limit;
+        adjustBtns.forEach(btn => {
+            if (!active) {
+                btn.disabled = true;
+                return;
+            }
+            const delta = parseInt(btn.dataset.adjust, 10) || 0;
+            // "+" buttons do nothing past the predefined limit: disable at cap.
+            btn.disabled = delta > 0 && atMax;
+        });
+        prevBtn.disabled = !active;
+        nextBtn.disabled = !active;
+    }
+
+    // Refresh time + progress after a manual change without losing Paused state.
+    function refreshAfterManualChange() {
+        updateAdjustControls();
+        if (isPaused) {
+            timerTime.textContent = formatTime(timeLeft);
+            const elapsed = totalDuration - timeLeft;
+            const rawProgress = totalDuration > 0 ? (elapsed / totalDuration) * 100 : 0;
+            timerProgressBar.style.width = `${Math.min(100, Math.max(0, rawProgress))}%`;
+            // Keep "Paused" label; just refresh next-up text.
+            if (currentIndex + 1 < workout.length) {
+                const next = workout[currentIndex + 1];
+                nextUp.textContent = `Next: ${next.type === 'break' ? 'Break' : next.name} (${formatTime(next.duration)})`;
+            } else {
+                nextUp.textContent = 'Last item!';
+            }
+            return;
+        }
+        renderRunningState();
+    }
+
+    function finishWorkout() {
+        clearInterval(timerInterval);
+        isRunning = false;
+        isPaused = false;
+
+        releaseWakeLock();
+
+        timerLabel.textContent = 'Done!';
+        timerLabel.className = 'timer-label running';
+        timerTime.textContent = '00:00';
+        timerProgressBar.style.width = '100%';
+        nextUp.textContent = 'Great workout!';
+        startBtn.disabled = false;
+        pauseBtn.disabled = true;
+        resetBtn.disabled = true;
+
+        playFinishSound();
+        timerTime.classList.add('flash');
+        setTimeout(() => timerTime.classList.remove('flash'), 2000);
+        updateAdjustControls();
+    }
+
+    function goToNextInterval(playSound = true) {
+        const nextItem = workout[currentIndex];
+        totalDuration = nextItem.duration;
+        timeLeft = totalDuration;
+
+        if (playSound) {
+            if (nextItem.type === 'break') {
+                playBreakSound();
+            } else {
+                playTransitionSound();
+            }
+            timerTime.classList.add('flash');
+            setTimeout(() => timerTime.classList.remove('flash'), 600);
+        }
+        updateAdjustControls();
+    }
+
+    function adjustTime(delta) {
+        if (!hasActiveInterval()) return;
+        const limit = getPredefinedLimit();
+        // Lock the interval total to its predefined duration so +/- can never
+        // stretch a sub-activity beyond what was planned.
+        totalDuration = limit;
+        timeLeft += delta;
+        if (timeLeft < 0) timeLeft = 0;
+        if (timeLeft > limit) timeLeft = limit;
+
+        if (timeLeft <= 0) {
+            // Manual skip: behave like the timer naturally expiring.
+            currentIndex++;
+            if (currentIndex >= workout.length) {
+                finishWorkout();
+                return;
+            }
+            goToNextInterval(!isPaused);
+        }
+        refreshAfterManualChange();
+    }
+
+    // Shift to another sub-activity (prev/next interval) mid-run.
+    // Restarts the target interval at its full predefined duration.
+    function shiftInterval(direction) {
+        if (!hasActiveInterval()) return;
+        const newIndex = currentIndex + direction;
+        if (newIndex < 0) {
+            // Already on the first interval: restart it.
+            currentIndex = 0;
+            goToNextInterval(false);
+            refreshAfterManualChange();
+            return;
+        }
+        if (newIndex >= workout.length) {
+            // Shifted past the last interval: finish like a natural expiry.
+            finishWorkout();
+            return;
+        }
+        currentIndex = newIndex;
+        goToNextInterval(!isPaused);
+        refreshAfterManualChange();
+    }
+
+    // Screen Wake Lock — keeps the display on while the timer runs,
+    // like a video player. Released on pause/reset/finish.
+    async function acquireWakeLock() {
+        if ('wakeLock' in navigator) {
+            try {
+                if (wakeLock) return; // already held
+                wakeLock = await navigator.wakeLock.request('screen');
+                wakeLock.addEventListener('release', () => { wakeLock = null; });
+            } catch (e) { wakeLock = null; }
+            return;
+        }
+        startKeepAwakeFallback();
+    }
+
+    function releaseWakeLock() {
+        if (wakeLock) {
+            try { wakeLock.release(); } catch (e) {}
+            wakeLock = null;
+        }
+        stopKeepAwakeFallback();
+    }
+
+    // Fallback for browsers without the Wake Lock API (older mobile Safari):
+    // a hidden muted looping video keeps the screen from sleeping.
+    function startKeepAwakeFallback() {
+        try {
+            if (keepAwakeVideo) { keepAwakeVideo.play().catch(() => {}); return; }
+            const canvas = document.createElement('canvas');
+            canvas.width = 1;
+            canvas.height = 1;
+            const stream = canvas.captureStream(1);
+            const video = document.createElement('video');
+            video.muted = true;
+            video.loop = true;
+            video.playsInline = true;
+            video.setAttribute('playsinline', '');
+            video.style.cssText = 'position:fixed;width:1px;height:1px;opacity:0;pointer-events:none;';
+            video.srcObject = stream;
+            document.body.appendChild(video);
+            video.play().catch(() => {});
+            keepAwakeVideo = video;
+        } catch (e) {}
+    }
+
+    function stopKeepAwakeFallback() {
+        try {
+            if (keepAwakeVideo) {
+                keepAwakeVideo.pause();
+                if (keepAwakeVideo.srcObject) {
+                    keepAwakeVideo.srcObject.getTracks().forEach(t => t.stop());
+                }
+                keepAwakeVideo.remove();
+                keepAwakeVideo = null;
+            }
+        } catch (e) { keepAwakeVideo = null; }
+    }
+
+    // The OS releases the wake lock when the tab is hidden — re-acquire
+    // when visible again if the timer is still running.
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible' && isRunning) {
+            acquireWakeLock();
+        }
+    });
 
     // Timer controls
     function startTimer() {
@@ -533,6 +740,8 @@
             pauseBtn.disabled = false;
             resetBtn.disabled = false;
             renderRunningState();
+            updateAdjustControls();
+            acquireWakeLock();
             return;
         }
 
@@ -548,6 +757,8 @@
 
         playTransitionSound();
         renderRunningState();
+        updateAdjustControls();
+        acquireWakeLock();
 
         timerInterval = setInterval(tick, 1000);
     }
@@ -563,6 +774,8 @@
 
         timerLabel.textContent = 'Paused';
         timerLabel.className = 'timer-label paused';
+        updateAdjustControls();
+        releaseWakeLock();
     }
 
     function resetTimer() {
@@ -575,6 +788,7 @@
         pauseBtn.disabled = true;
         resetBtn.disabled = true;
 
+        releaseWakeLock();
         renderWorkoutList();
     }
 
@@ -590,42 +804,16 @@
 
             if (currentIndex >= workout.length) {
                 // Workout done
-                clearInterval(timerInterval);
-                isRunning = false;
-                isPaused = false;
-
-                timerLabel.textContent = 'Done!';
-                timerLabel.className = 'timer-label running';
-                timerTime.textContent = '00:00';
-                timerProgressBar.style.width = '100%';
-                nextUp.textContent = 'Great workout!';
-                startBtn.disabled = false;
-                pauseBtn.disabled = true;
-                resetBtn.disabled = true;
-
-                playFinishSound();
-                timerTime.classList.add('flash');
-                setTimeout(() => timerTime.classList.remove('flash'), 2000);
+                finishWorkout();
                 return;
             }
 
             // Transition to next item
-            const prevItem = workout[currentIndex - 1];
-            const nextItem = workout[currentIndex];
-            totalDuration = nextItem.duration;
-            timeLeft = totalDuration;
-
-            if (nextItem.type === 'break') {
-                playBreakSound();
-            } else {
-                playTransitionSound();
-            }
-
-            timerTime.classList.add('flash');
-            setTimeout(() => timerTime.classList.remove('flash'), 600);
+            goToNextInterval(true);
         }
 
         renderRunningState();
+        updateAdjustControls();
     }
 
     // Event listeners
@@ -709,6 +897,15 @@
     startBtn.addEventListener('click', startTimer);
     pauseBtn.addEventListener('click', pauseTimer);
     resetBtn.addEventListener('click', resetTimer);
+
+    adjustBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            adjustTime(parseInt(btn.dataset.adjust, 10) || 0);
+        });
+    });
+
+    prevBtn.addEventListener('click', () => shiftInterval(-1));
+    nextBtn.addEventListener('click', () => shiftInterval(1));
 
     function toggleFullscreen() {
         if (!document.fullscreenElement && !document.webkitFullscreenElement) {

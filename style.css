@@ -1031,6 +1031,15 @@ input:focus {
     border-color: #1a1a28;
 }
 
+.preset-item.active {
+    background: rgba(83, 168, 255, 0.06);
+    border-color: rgba(83, 168, 255, 0.35);
+}
+
+.preset-item.active .preset-name {
+    color: #53a8ff;
+}
+
 .preset-name {
     flex: 1;
     color: #ccc;
@@ -1062,6 +1071,13 @@ input:focus {
 .preset-load:hover {
     background: linear-gradient(135deg, #1a4a8a, #2563b0);
     box-shadow: 0 0 15px rgba(83, 168, 255, 0.15);
+}
+
+.preset-load:disabled {
+    opacity: 0.7;
+    cursor: default;
+    transform: none !important;
+    box-shadow: none !important;
 }
 
 .preset-export {
@@ -1185,6 +1201,40 @@ input:focus {
 /* Fullscreen responsive */
 .timer-panel.is-fullscreen .timer-time {
     font-size: clamp(4rem, 12vw, 10rem);
+}
+
+/* iOS fallback: true Fullscreen API is unavailable on iPhone Safari/Chrome
+   (all iOS browsers use WKWebView, which only supports fullscreen on <video>).
+   .pseudo-fullscreen mimics fullscreen with a fixed viewport overlay. */
+.timer-panel.pseudo-fullscreen {
+    position: fixed;
+    inset: 0;
+    top: 0;
+    left: 0;
+    z-index: 9999;
+    width: 100vw;
+    width: 100dvw;
+    height: 100vh;
+    height: 100dvh;
+    height: 100svh;
+    margin: 0;
+    border: none;
+    border-radius: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    background: #0a0a0f;
+}
+
+html.pseudo-fullscreen-active,
+body.pseudo-fullscreen-active {
+    overflow: hidden !important;
+    overscroll-behavior: none;
+    touch-action: pan-y;
+}
+
+.timer-panel.pseudo-fullscreen .timer-top-bar {
+    position: sticky;
+    top: 0;
 }
 
 @media (max-width: 700px) {

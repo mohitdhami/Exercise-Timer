@@ -17,6 +17,7 @@ A lightweight, self-contained workout timer built with vanilla HTML, CSS, and Ja
 - **Clear All** wipes the entire workout.
 - **Load Sample** populates a pre-built 7-exercise workout to test the timer.
 - **Duration persistence** — your last-used exercise and break durations are saved and restored on page reload.
+- **Workout persistence** — the builder list auto-saves to `localStorage` (`exerciseTimerWorkout`) on every change and is restored on app restart, so you never have to rebuild it.
 
 ### Drag-and-Drop Reordering
 
@@ -27,8 +28,9 @@ A lightweight, self-contained workout timer built with vanilla HTML, CSS, and Ja
 ### Presets
 
 - **Save as Preset** — name your current workout and store it in the browser.
-- **Load** a saved preset with one click (replaces the current workout).
-- **Delete** presets you no longer need.
+- **Load** a saved preset with one click (replaces the current workout). The loaded preset is marked `✓ Loaded` and highlighted; its name is remembered across restarts (`exerciseTimerLastPreset`).
+- Any manual edit (add / remove / duplicate / edit / reorder / sample / clear) marks the workout as custom and clears the loaded marker.
+- **Delete** presets you no longer need (deleting the loaded preset also clears the marker).
 - **Export** individual presets as `.json` files for sharing or backup.
 - **Import** presets from `.json` files. Imported presets merge with your existing collection.
 - All presets persist in `localStorage`.
@@ -42,6 +44,9 @@ A lightweight, self-contained workout timer built with vanilla HTML, CSS, and Ja
 - **Next Up** indicator shows the upcoming exercise or break, or "Last item!" for the final item.
 - **Countdown beeps** play during the final 3 seconds of each item.
 - **Auto-advance** — when an item finishes, the timer transitions seamlessly to the next one.
+- **Manual adjustment** — `<< 10s` adds time back (capped at the item's planned duration), `10s >>` skips ahead, `⏮` / `⏭` jump to the previous / next interval (restarting it at full duration). Controls stay enabled while paused.
+- **Keep awake** — the screen is kept on while the timer runs via the Screen Wake Lock API plus a NoSleep-style looping-video fallback on iOS (released on pause / reset / finish, re-acquired when the tab becomes visible again).
+- **Drift-resistant ticking** — elapsed time is computed from the wall clock, so background throttling on mobile skips forward correctly instead of losing time.
 - **Done!** screen with a celebratory sound and flashing timer when the workout completes.
 
 ### Fullscreen Mode
@@ -49,8 +54,8 @@ A lightweight, self-contained workout timer built with vanilla HTML, CSS, and Ja
 
 - Click the `⛶` button to enter fullscreen, showing the timer at full viewport size.
 - The exercise name scales up dramatically with fluid sizing.
-- Exit fullscreen with the same button or by pressing Escape.
-- Supports both standard and WebKit fullscreen APIs for cross-browser compatibility.
+- Exit fullscreen with the same button (shows `✕` when active) or by pressing Escape.
+- Supports standard and WebKit fullscreen APIs; on iPhone Safari/Chrome (where fullscreen on generic elements is unsupported) it falls back to a fixed-viewport pseudo-fullscreen overlay with the same large-type styling.
 
 ### Sound System
 
@@ -86,8 +91,8 @@ A lightweight, self-contained workout timer built with vanilla HTML, CSS, and Ja
 ```
 exercise_timer/
 ├── index.html    — HTML structure
-├── style.css     — All styling (~1140 lines)
-├── app.js        — All application logic (~741 lines)
+├── style.css     — All styling
+├── app.js        — All application logic
 └── README.md
 ```
 
@@ -97,7 +102,8 @@ Open `index.html` in any modern browser. No server required.
 
 ## Browser Support
 
-- Chrome / Edge (full support)
+- Chrome / Edge (full support, native Wake Lock + Fullscreen)
 - Firefox (full support)
-- Safari (Webkit fullscreen API fallback)
+- Safari (WebKit fullscreen API; Screen Wake Lock on iOS 16.4+, video fallback below that and in Home Screen web apps)
+- iOS Safari / Chrome (pseudo-fullscreen overlay; keep-awake via Wake Lock where available plus looping-video fallback; add `viewport-fit=cover` + standalone meta tags for best Home Screen behavior)
 - Mobile browsers (responsive layout, touch-friendly controls)
